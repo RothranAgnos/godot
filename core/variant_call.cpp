@@ -247,6 +247,10 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(String,matchn);
 	VCALL_LOCALMEM1R(String,begins_with);
 	VCALL_LOCALMEM1R(String,ends_with);
+	VCALL_LOCALMEM1R(String,is_subsequence_of);
+	VCALL_LOCALMEM1R(String,is_subsequence_ofi);
+	VCALL_LOCALMEM0R(String,bigrams);
+	VCALL_LOCALMEM1R(String,similarity);
 	VCALL_LOCALMEM2R(String,replace);
 	VCALL_LOCALMEM2R(String,replacen);
 	VCALL_LOCALMEM2R(String,insert);
@@ -265,6 +269,7 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM2(String,erase);
 	VCALL_LOCALMEM0R(String,hash);
 	VCALL_LOCALMEM0R(String,md5_text);
+	VCALL_LOCALMEM0R(String,sha256_text);
 	VCALL_LOCALMEM0R(String,md5_buffer);
 	VCALL_LOCALMEM0R(String,empty);
 	VCALL_LOCALMEM0R(String,is_abs_path);
@@ -464,7 +469,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1(Array,resize);
 	VCALL_LOCALMEM2(Array,insert);
 	VCALL_LOCALMEM1(Array,remove);
-	VCALL_LOCALMEM1R(Array,find);
+	VCALL_LOCALMEM2R(Array,find);
+	VCALL_LOCALMEM2R(Array,rfind);
 	VCALL_LOCALMEM1R(Array,find_last);
 	VCALL_LOCALMEM1R(Array,count);
 	VCALL_LOCALMEM1(Array,erase);
@@ -505,6 +511,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(ByteArray,get);
 	VCALL_LOCALMEM1(ByteArray,push_back);
 	VCALL_LOCALMEM1(ByteArray,resize);
+	VCALL_LOCALMEM2R(ByteArray,insert);
+	VCALL_LOCALMEM1(ByteArray,remove);
 	VCALL_LOCALMEM1(ByteArray,append);
 	VCALL_LOCALMEM1(ByteArray,append_array);
 
@@ -513,6 +521,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(IntArray,get);
 	VCALL_LOCALMEM1(IntArray,push_back);
 	VCALL_LOCALMEM1(IntArray,resize);
+	VCALL_LOCALMEM2R(IntArray,insert);
+	VCALL_LOCALMEM1(IntArray,remove);
 	VCALL_LOCALMEM1(IntArray,append);
 	VCALL_LOCALMEM1(IntArray,append_array);
 
@@ -521,6 +531,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(RealArray,get);
 	VCALL_LOCALMEM1(RealArray,push_back);
 	VCALL_LOCALMEM1(RealArray,resize);
+	VCALL_LOCALMEM2R(RealArray,insert);
+	VCALL_LOCALMEM1(RealArray,remove);
 	VCALL_LOCALMEM1(RealArray,append);
 	VCALL_LOCALMEM1(RealArray,append_array);
 
@@ -529,6 +541,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(StringArray,get);
 	VCALL_LOCALMEM1(StringArray,push_back);
 	VCALL_LOCALMEM1(StringArray,resize);
+	VCALL_LOCALMEM2R(StringArray,insert);
+	VCALL_LOCALMEM1(StringArray,remove);
 	VCALL_LOCALMEM1(StringArray,append);
 	VCALL_LOCALMEM1(StringArray,append_array);
 
@@ -537,6 +551,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(Vector2Array,get);
 	VCALL_LOCALMEM1(Vector2Array,push_back);
 	VCALL_LOCALMEM1(Vector2Array,resize);
+	VCALL_LOCALMEM2R(Vector2Array,insert);
+	VCALL_LOCALMEM1(Vector2Array,remove);
 	VCALL_LOCALMEM1(Vector2Array,append);
 	VCALL_LOCALMEM1(Vector2Array,append_array);
 
@@ -545,6 +561,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(Vector3Array,get);
 	VCALL_LOCALMEM1(Vector3Array,push_back);
 	VCALL_LOCALMEM1(Vector3Array,resize);
+	VCALL_LOCALMEM2R(Vector3Array,insert);
+	VCALL_LOCALMEM1(Vector3Array,remove);
 	VCALL_LOCALMEM1(Vector3Array,append);
 	VCALL_LOCALMEM1(Vector3Array,append_array);
 
@@ -553,6 +571,8 @@ static void _call_##m_type##_##m_method(Variant& r_ret,Variant& p_self,const Var
 	VCALL_LOCALMEM1R(ColorArray,get);
 	VCALL_LOCALMEM1(ColorArray,push_back);
 	VCALL_LOCALMEM1(ColorArray,resize);
+	VCALL_LOCALMEM2R(ColorArray,insert);
+	VCALL_LOCALMEM1(ColorArray,remove);
 	VCALL_LOCALMEM1(ColorArray,append);
 	VCALL_LOCALMEM1(ColorArray,append_array);
 
@@ -933,26 +953,32 @@ _VariantCall::ConstantData* _VariantCall::constant_data=NULL;
 Variant Variant::call(const StringName& p_method,const Variant** p_args,int p_argcount,CallError &r_error) {
 
 	Variant ret;
+	call_ptr(p_method,p_args,p_argcount,&ret,r_error);
+	return ret;
+}
+
+void Variant::call_ptr(const StringName& p_method,const Variant** p_args,int p_argcount,Variant* r_ret,CallError &r_error) {
+	Variant ret;
 
 	if (type==Variant::OBJECT) {
 		//call object
 		Object *obj = _get_obj().obj;
 		if (!obj) {
 			r_error.error=CallError::CALL_ERROR_INSTANCE_IS_NULL;
-			return ret;
+			return;
 		}
 #ifdef DEBUG_ENABLED
 		if (ScriptDebugger::get_singleton() && _get_obj().ref.is_null()) {
 			//only if debugging!
 			if (!ObjectDB::instance_validate(obj)) {
 				r_error.error=CallError::CALL_ERROR_INSTANCE_IS_NULL;
-				return ret;
+				return;
 			}
 		}
 
 
 #endif
-		return _get_obj().obj->call(p_method,p_args,p_argcount,r_error);
+		ret=_get_obj().obj->call(p_method,p_args,p_argcount,r_error);
 
 	//else if (type==Variant::METHOD) {
 
@@ -964,14 +990,15 @@ Variant Variant::call(const StringName& p_method,const Variant** p_args,int p_ar
 #ifdef DEBUG_ENABLED
 		if (!E) {
 			r_error.error=Variant::CallError::CALL_ERROR_INVALID_METHOD;
-			return Variant();
+			return;
 		}
 #endif
 		_VariantCall::FuncData& funcdata = E->get();
 		funcdata.call(ret,*this,p_args,p_argcount,r_error);
 	}
 
-	return ret;
+	if (r_error.error==Variant::CallError::CALL_OK && r_ret)
+		*r_ret=ret;
 }
 
 #define VCALL(m_type,m_method) _VariantCall::_call_##m_type##_##m_method
@@ -1268,6 +1295,10 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 	ADDFUNC1(STRING,BOOL,String,matchn,STRING,"expr",varray());
 	ADDFUNC1(STRING,BOOL,String,begins_with,STRING,"text",varray());
 	ADDFUNC1(STRING,BOOL,String,ends_with,STRING,"text",varray());
+	ADDFUNC1(STRING,BOOL,String,is_subsequence_of,STRING,"text",varray());
+	ADDFUNC1(STRING,BOOL,String,is_subsequence_ofi,STRING,"text",varray());
+	ADDFUNC0(STRING,STRING_ARRAY,String,bigrams,varray());
+	ADDFUNC1(STRING,REAL,String,similarity,STRING,"text",varray());
 
 	ADDFUNC2(STRING,STRING,String,replace,STRING,"what",STRING,"forwhat",varray());
 	ADDFUNC2(STRING,STRING,String,replacen,STRING,"what",STRING,"forwhat",varray());
@@ -1285,10 +1316,11 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 	ADDFUNC0(STRING,STRING,String,extension,varray());
 	ADDFUNC0(STRING,STRING,String,basename,varray());
 	ADDFUNC1(STRING,STRING,String,plus_file,STRING,"file",varray());
-	ADDFUNC1(STRING,STRING,String,ord_at,INT,"at",varray());
+	ADDFUNC1(STRING,INT,String,ord_at,INT,"at",varray());
 	ADDFUNC2(STRING,NIL,String,erase,INT,"pos",INT,"chars", varray());
 	ADDFUNC0(STRING,INT,String,hash,varray());
 	ADDFUNC0(STRING,STRING,String,md5_text,varray());
+	ADDFUNC0(STRING,STRING,String,sha256_text,varray());
 	ADDFUNC0(STRING,RAW_ARRAY,String,md5_buffer,varray());
 	ADDFUNC0(STRING,BOOL,String,empty,varray());
 	ADDFUNC0(STRING,BOOL,String,is_abs_path,varray());
@@ -1432,9 +1464,9 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 	ADDFUNC0(DICTIONARY,INT,Dictionary,size,varray());
 	ADDFUNC0(DICTIONARY,BOOL,Dictionary,empty,varray());
 	ADDFUNC0(DICTIONARY,NIL,Dictionary,clear,varray());
-	ADDFUNC1(DICTIONARY,BOOL,Dictionary,has,NIL,"value",varray());
-	ADDFUNC1(DICTIONARY,BOOL,Dictionary,has_all,ARRAY,"values",varray());
-	ADDFUNC1(DICTIONARY,NIL,Dictionary,erase,NIL,"value",varray());
+	ADDFUNC1(DICTIONARY,BOOL,Dictionary,has,NIL,"key",varray());
+	ADDFUNC1(DICTIONARY,BOOL,Dictionary,has_all,ARRAY,"keys",varray());
+	ADDFUNC1(DICTIONARY,NIL,Dictionary,erase,NIL,"key",varray());
 	ADDFUNC0(DICTIONARY,INT,Dictionary,hash,varray());
 	ADDFUNC0(DICTIONARY,ARRAY,Dictionary,keys,varray());
 	ADDFUNC0(DICTIONARY,ARRAY,Dictionary,values,varray());
@@ -1453,7 +1485,8 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 	ADDFUNC2(ARRAY,NIL,Array,insert,INT,"pos",NIL,"value",varray());
 	ADDFUNC1(ARRAY,NIL,Array,remove,INT,"pos",varray());
 	ADDFUNC1(ARRAY,NIL,Array,erase,NIL,"value",varray());
-	ADDFUNC1(ARRAY,INT,Array,find,NIL,"value",varray());
+	ADDFUNC2(ARRAY,INT,Array,find,NIL,"what",INT,"from",varray(0));
+	ADDFUNC2(ARRAY,INT,Array,rfind,NIL,"what",INT,"from",varray(-1));
 	ADDFUNC1(ARRAY,INT,Array,find_last,NIL,"value",varray());
 	ADDFUNC1(ARRAY,INT,Array,count,NIL,"value",varray());
 	ADDFUNC0(ARRAY,NIL,Array,pop_back,varray());
@@ -1465,8 +1498,11 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 
 	ADDFUNC0(RAW_ARRAY,INT,ByteArray,size,varray());
 	ADDFUNC2(RAW_ARRAY,NIL,ByteArray,set,INT,"idx",INT,"byte",varray());
-	//ADDFUNC1(RAW_ARRAY,INT,ByteArray,get,INT,"idx",varray());
 	ADDFUNC1(RAW_ARRAY,NIL,ByteArray,push_back,INT,"byte",varray());
+	ADDFUNC1(RAW_ARRAY,NIL,ByteArray,append,INT,"byte",varray());
+	ADDFUNC1(RAW_ARRAY,NIL,ByteArray,append_array,RAW_ARRAY,"array",varray());
+	ADDFUNC1(RAW_ARRAY,NIL,ByteArray,remove,INT,"idx",varray());
+	ADDFUNC2(RAW_ARRAY,INT,ByteArray,insert,INT,"idx",INT,"byte",varray());
 	ADDFUNC1(RAW_ARRAY,NIL,ByteArray,resize,INT,"idx",varray());
 
 	ADDFUNC0(RAW_ARRAY,STRING,ByteArray,get_string_from_ascii,varray());
@@ -1475,38 +1511,56 @@ _VariantCall::addfunc(Variant::m_vtype,Variant::m_ret,_SCS(#m_method),VCALL(m_cl
 
 	ADDFUNC0(INT_ARRAY,INT,IntArray,size,varray());
 	ADDFUNC2(INT_ARRAY,NIL,IntArray,set,INT,"idx",INT,"integer",varray());
-	//ADDFUNC1(INT_ARRAY,INT,IntArray,get,INT,"idx",varray());
 	ADDFUNC1(INT_ARRAY,NIL,IntArray,push_back,INT,"integer",varray());
+	ADDFUNC1(INT_ARRAY,NIL,IntArray,append,INT,"integer",varray());
+	ADDFUNC1(INT_ARRAY,NIL,IntArray,append_array,INT_ARRAY,"array",varray());
+	ADDFUNC1(INT_ARRAY,NIL,IntArray,remove,INT,"idx",varray());
+	ADDFUNC2(INT_ARRAY,INT,IntArray,insert,INT,"idx",INT,"integer",varray());
 	ADDFUNC1(INT_ARRAY,NIL,IntArray,resize,INT,"idx",varray());
 
 	ADDFUNC0(REAL_ARRAY,INT,RealArray,size,varray());
 	ADDFUNC2(REAL_ARRAY,NIL,RealArray,set,INT,"idx",REAL,"value",varray());
-	//ADDFUNC1(REAL_ARRAY,REAL,RealArray,get,INT,"idx",varray());
 	ADDFUNC1(REAL_ARRAY,NIL,RealArray,push_back,REAL,"value",varray());
+	ADDFUNC1(REAL_ARRAY,NIL,RealArray,append,REAL,"value",varray());
+	ADDFUNC1(REAL_ARRAY,NIL,RealArray,append_array,REAL_ARRAY,"array",varray());
+	ADDFUNC1(REAL_ARRAY,NIL,RealArray,remove,INT,"idx",varray());
+	ADDFUNC2(REAL_ARRAY,INT,RealArray,insert,INT,"idx",REAL,"value",varray());
 	ADDFUNC1(REAL_ARRAY,NIL,RealArray,resize,INT,"idx",varray());
 
 	ADDFUNC0(STRING_ARRAY,INT,StringArray,size,varray());
 	ADDFUNC2(STRING_ARRAY,NIL,StringArray,set,INT,"idx",STRING,"string",varray());
-	//ADDFUNC1(STRING_ARRAY,STRING,StringArray,get,INT,"idx",varray());
 	ADDFUNC1(STRING_ARRAY,NIL,StringArray,push_back,STRING,"string",varray());
+	ADDFUNC1(STRING_ARRAY,NIL,StringArray,append,STRING,"string",varray());
+	ADDFUNC1(STRING_ARRAY,NIL,StringArray,append_array,STRING_ARRAY,"array",varray());
+	ADDFUNC1(STRING_ARRAY,NIL,StringArray,remove,INT,"idx",varray());
+	ADDFUNC2(STRING_ARRAY,INT,StringArray,insert,INT,"idx",STRING,"string",varray());
 	ADDFUNC1(STRING_ARRAY,NIL,StringArray,resize,INT,"idx",varray());
 
 	ADDFUNC0(VECTOR2_ARRAY,INT,Vector2Array,size,varray());
 	ADDFUNC2(VECTOR2_ARRAY,NIL,Vector2Array,set,INT,"idx",VECTOR2,"vector2",varray());
-	//ADDFUNC1(VECTOR2_ARRAY,VECTOR2,Vector2Array,get,INT,"idx",varray());
 	ADDFUNC1(VECTOR2_ARRAY,NIL,Vector2Array,push_back,VECTOR2,"vector2",varray());
+	ADDFUNC1(VECTOR2_ARRAY,NIL,Vector2Array,append,VECTOR2,"vector2",varray());
+	ADDFUNC1(VECTOR2_ARRAY,NIL,Vector2Array,append_array,VECTOR2_ARRAY,"array",varray());
+	ADDFUNC1(VECTOR2_ARRAY,NIL,Vector2Array,remove,INT,"idx",varray());
+	ADDFUNC2(VECTOR2_ARRAY,INT,Vector2Array,insert,INT,"idx",VECTOR2,"vector2",varray());
 	ADDFUNC1(VECTOR2_ARRAY,NIL,Vector2Array,resize,INT,"idx",varray());
 
 	ADDFUNC0(VECTOR3_ARRAY,INT,Vector3Array,size,varray());
 	ADDFUNC2(VECTOR3_ARRAY,NIL,Vector3Array,set,INT,"idx",VECTOR3,"vector3",varray());
-	//ADDFUNC1(VECTOR3_ARRAY,VECTOR3,Vector3Array,get,INT,"idx",varray());
 	ADDFUNC1(VECTOR3_ARRAY,NIL,Vector3Array,push_back,VECTOR3,"vector3",varray());
+	ADDFUNC1(VECTOR3_ARRAY,NIL,Vector3Array,append,VECTOR3,"vector3",varray());
+	ADDFUNC1(VECTOR3_ARRAY,NIL,Vector3Array,append_array,VECTOR3_ARRAY,"array",varray());
+	ADDFUNC1(VECTOR3_ARRAY,NIL,Vector3Array,remove,INT,"idx",varray());
+	ADDFUNC2(VECTOR3_ARRAY,INT,Vector3Array,insert,INT,"idx",VECTOR3,"vector3",varray());
 	ADDFUNC1(VECTOR3_ARRAY,NIL,Vector3Array,resize,INT,"idx",varray());
 
 	ADDFUNC0(COLOR_ARRAY,INT,ColorArray,size,varray());
 	ADDFUNC2(COLOR_ARRAY,NIL,ColorArray,set,INT,"idx",COLOR,"color",varray());
-	//ADDFUNC1(COLOR_ARRAY,COLOR,ColorArray,get,INT,"idx",varray());
 	ADDFUNC1(COLOR_ARRAY,NIL,ColorArray,push_back,COLOR,"color",varray());
+	ADDFUNC1(COLOR_ARRAY,NIL,ColorArray,append,COLOR,"color",varray());
+	ADDFUNC1(COLOR_ARRAY,NIL,ColorArray,append_array,COLOR_ARRAY,"array",varray());
+	ADDFUNC1(COLOR_ARRAY,NIL,ColorArray,remove,INT,"idx",varray());
+	ADDFUNC2(COLOR_ARRAY,INT,ColorArray,insert,INT,"idx",COLOR,"color",varray());
 	ADDFUNC1(COLOR_ARRAY,NIL,ColorArray,resize,INT,"idx",varray());
 
 	//pointerbased

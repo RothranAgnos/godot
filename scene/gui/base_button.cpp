@@ -225,11 +225,21 @@ void BaseButton::_notification(int p_what) {
 		status.hovering=false;
 		update();
 	}
+	if (p_what==NOTIFICATION_DRAG_BEGIN) {
+
+		if (status.press_attempt) {
+			status.press_attempt=false;
+			status.pressing_button=0;
+			update();
+		}
+	}
+
 	if (p_what==NOTIFICATION_FOCUS_EXIT) {
 
 		if (status.pressing_button && status.press_attempt) {
 			status.press_attempt=false;
 			status.pressing_button=0;
+			update();
 		}
 	}
 
@@ -418,8 +428,13 @@ void BaseButton::_unhandled_input(InputEvent p_event) {
 String BaseButton::get_tooltip(const Point2& p_pos) const {
 
 	String tooltip=Control::get_tooltip(p_pos);
-	if (shortcut.is_valid() && shortcut->is_valid())
-		tooltip+=" ("+shortcut->get_as_text()+")";
+	if (shortcut.is_valid() && shortcut->is_valid()) {
+		if (tooltip.find("$sc")!=-1) {
+			tooltip=tooltip.replace_first("$sc","("+shortcut->get_as_text()+")");
+		} else {
+			tooltip+=" ("+shortcut->get_as_text()+")";
+		}
+	}
 	return tooltip;
 }
 

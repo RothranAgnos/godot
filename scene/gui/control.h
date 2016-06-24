@@ -153,6 +153,8 @@ private:
 		HashMap<StringName, Ref<Font>, StringNameHasher > font_override;
 		HashMap<StringName, Color, StringNameHasher > color_override;
 		HashMap<StringName, int, StringNameHasher > constant_override;
+		Map< Ref<Font>, int> font_refcount;
+
 	} data;
 
 	// used internally
@@ -169,7 +171,7 @@ private:
 	float _get_range(int p_idx) const;
 	float _s2a(float p_val, AnchorType p_anchor,float p_range) const;
 	float _a2s(float p_val, AnchorType p_anchor,float p_range) const;
-	void _propagate_theme_changed(Control *p_owner);
+	void _propagate_theme_changed(CanvasItem *p_at, Control *p_owner);
 
 	void _change_notify_margins();
 	void _update_minimum_size();
@@ -183,6 +185,11 @@ private:
 	// Deprecated, should be removed in a future version.
 	void _set_rotation_deg(float p_degrees);
 	float _get_rotation_deg() const;
+
+	void _ref_font(Ref<Font> p_sc);
+	void _unref_font( Ref<Font> p_sc);
+	void _font_changed();
+
 
 friend class Viewport;
 	void _modal_stack_remove();

@@ -34,6 +34,7 @@
 #include "scene/gui/dialogs.h"
 #include "undo_redo.h"
 #include "editor_data.h"
+#include "editor_settings.h"
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
 */
@@ -61,6 +62,7 @@ class SceneTreeEditor : public Control {
 		SCENE_MENU_CLEAR_INHERITANCE,
 		SCENE_MENU_OPEN_INHERITED,
 		SCENE_MENU_CLEAR_INHERITANCE_CONFIRM,
+		SCENE_MENU_CLEAR_INSTANCING,
 	};
 
 	Tree *tree;
@@ -117,6 +119,7 @@ class SceneTreeEditor : public Control {
 	void _node_visibility_changed(Node *p_node);
 	void _subscene_option(int p_idx);
 
+	void _node_replace_owner(Node* p_base,Node* p_node,Node* p_root);
 
 
 	void _selection_changed();
@@ -129,6 +132,8 @@ class SceneTreeEditor : public Control {
 	void _rmb_select(const Vector2& p_pos);
 
 	void _warning_changed(Node* p_for_node);
+
+	void _editor_settings_changed();
 
 	Timer* update_timer;
 

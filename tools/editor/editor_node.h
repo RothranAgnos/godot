@@ -65,7 +65,6 @@
 #include "tools/editor/editor_log.h"
 #include "tools/editor/scene_tree_dock.h"
 #include "tools/editor/resources_dock.h"
-#include "tools/editor/optimized_save_dialog.h"
 #include "tools/editor/editor_run_script.h"
 
 #include "tools/editor/editor_run_native.h"
@@ -227,6 +226,7 @@ private:
 	Tabs *scene_tabs;
 	int tab_closing;
 
+	bool exiting;
 
 	int old_split_ofs;
 	VSplitContainer *top_split;
@@ -573,6 +573,7 @@ private:
 
 	void _update_addon_config();
 
+	static void _file_access_close_error_notify(const String& p_str);
 
 protected:
 	void _notification(int p_what);
@@ -691,6 +692,7 @@ public:
 	static void unregister_editor_types();
 
 	Control *get_gui_base() { return gui_base; }
+	Control *get_theme_base() { return gui_base->get_parent_control(); }
 
 	static void add_io_error(const String& p_error);
 
@@ -711,6 +713,8 @@ public:
 	void save_layout();
 
 	void update_keying();
+
+	bool is_exiting() const { return exiting; }
 
 	ToolButton *get_pause_button() { return pause_button; }
 

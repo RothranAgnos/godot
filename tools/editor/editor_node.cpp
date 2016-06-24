@@ -29,8 +29,7 @@
 #include "version.h"
 #include "editor_node.h"
 #include "print_string.h"
-#include "editor_icons.h"
-#include "editor_fonts.h"
+#include "editor_themes.h"
 
 #include "editor_help.h"
 #include "core/io/resource_saver.h"
@@ -56,12 +55,12 @@
 #include "io/zip_io.h"
 #include "io/config_file.h"
 #include "animation_editor.h"
-
+#include "io/stream_peer_ssl.h"
 // plugins
 #include "plugins/sprite_frames_editor_plugin.h"
 #include "plugins/texture_region_editor_plugin.h"
 #include "plugins/canvas_item_editor_plugin.h"
-#include "addon_editor_plugin.h"
+#include "asset_library_editor_plugin.h"
 #include "plugins/spatial_editor_plugin.h"
 #include "plugins/sample_editor_plugin.h"
 #include "plugins/texture_editor_plugin.h"
@@ -171,6 +170,19 @@ void EditorNode::_unhandled_input(const InputEvent& p_event) {
 
 	if (p_event.type==InputEvent::KEY && p_event.key.pressed && !p_event.key.echo && !gui_base->get_viewport()->gui_has_modal_stack()) {
 
+
+		if (ED_IS_SHORTCUT("editor/fullscreen_mode", p_event)) {
+			if (distraction_free_mode) {
+				distraction_free_mode = false;
+				_update_top_menu_visibility();
+			} else {
+				set_docks_visible(!get_docks_visible());
+			}
+		}
+		if (ED_IS_SHORTCUT("editor/distraction_free_mode", p_event)) {
+			set_distraction_free_mode(!get_distraction_free_mode());
+		}
+
 		switch(p_event.key.scancode) {
 
 			/*case KEY_F1:
@@ -193,18 +205,18 @@ void EditorNode::_unhandled_input(const InputEvent& p_event) {
 			case KEY_F6: _menu_option_confirm(RUN_PLAY_SCENE,true); break;
 			//case KEY_F7: _menu_option_confirm(RUN_PAUSE,true); break;
 			case KEY_F8: _menu_option_confirm(RUN_STOP,true); break;*/
-			case KEY_F11: {
-				if (p_event.key.mod.shift) {
-					if (p_event.key.mod.control) {
-						set_distraction_free_mode(!get_distraction_free_mode());
-					} else if (distraction_free_mode) {
-						distraction_free_mode = false;
-						_update_top_menu_visibility();
-					} else {
-						set_docks_visible(!get_docks_visible());
-					}
+			case KEY_TAB:
+				if (p_event.key.mod.command) {
+					int current_tab = editor_data.get_edited_scene();
+					int tab_offset = 1;
+					if (p_event.key.mod.shift)
+						tab_offset = -1;
+					int next_tab = current_tab + tab_offset;
+					next_tab = next_tab >= 0 ? next_tab : editor_data.get_edited_scene_count() - 1;
+					next_tab %= editor_data.get_edited_scene_count();
+					_scene_tab_changed(next_tab);
 				}
-			} break;
+			break;
 		}
 
 	}
@@ -217,7 +229,7 @@ void EditorNode::_notification(int p_what) {
 	if (p_what==NOTIFICATION_EXIT_TREE) {
 
 		editor_data.save_editor_external_data();
-
+		FileAccess::set_file_close_fail_notify_callback(NULL);
 		log->deinit(); // do not get messages anymore
 	}
 	if (p_what==NOTIFICATION_PROCESS) {
@@ -742,100 +754,6 @@ void EditorNode::_set_scene_metadata(const String& p_file) {
 
 }
 
-static Error _fix_object_paths(Object* obj, Node* root, String save_path) {
-
-	Globals* g = Globals::get_singleton();
-
-	String import_dir = root->get_meta("__editor_import_file__");
-	import_dir = import_dir.get_base_dir();
-	import_dir = DirAccess::normalize_path(import_dir);
-	if (import_dir[import_dir.length()-1] != '/') {
-		import_dir = import_dir + "/";
-	};
-
-	String resource_dir = DirAccess::normalize_path(g->get_resource_path());
-	if (resource_dir[resource_dir.length()-1] != '/') {
-		resource_dir = resource_dir + "/";
-	};
-
-
-	List<PropertyInfo> list;
-	obj->get_property_list(&list, false);
-
-	List<PropertyInfo>::Element *E = list.front();
-
-	while (E) {
-
-		Variant v = obj->get(E->get().name);
-		if (v.get_type() == Variant::OBJECT) {
-
-			Ref<Resource> res = (RefPtr)v;
-			if (res.is_null()) {
-				E = E->next();
-				continue;
-			}
-
-			if (res->get_path() != "") {
-
-				String res_path = res->get_path();
-				res_path = Globals::get_singleton()->globalize_path(res_path);
-				res_path = DirAccess::normalize_path(res_path);
-
-				if (res_path.find(resource_dir) != 0) {
-
-					// path of resource is not inside engine's resource path
-
-					String new_path;
-
-					if (res_path.find(import_dir) == 0) {
-
-						// path of resource is relative to path of import file
-						new_path = save_path + "/" + res_path.substr(import_dir.length(), res_path.length() - import_dir.length());
-
-					} else {
-
-						// path of resource is not relative to import file
-						new_path = save_path + "/" + res_path.get_file();
-					};
-
-					res->set_path(g->localize_path(new_path));
-					DirAccess* d = DirAccess::create(DirAccess::ACCESS_RESOURCES);
-					d->make_dir_recursive(new_path.get_base_dir());
-					printf("copying from %ls to %ls\n", res_path.c_str(), new_path.c_str());
-					Error err = d->copy(res_path, new_path);
-					memdelete(d);
-					ERR_FAIL_COND_V(err != OK, err);
-				}
-
-			} else {
-
-				_fix_object_paths(res.operator->(), root, save_path);
-			};
-		};
-
-
-		E = E->next();
-	};
-
-	return OK;
-};
-
-static Error _fix_imported_scene_paths(Node* node, Node* root, String save_path) {
-
-	if (node == root || node->get_owner() == root) {
-		Error e = _fix_object_paths(node, root, save_path);
-		ERR_FAIL_COND_V(e != OK, e);
-	};
-
-	for (int i=0; i<node->get_child_count(); i++) {
-
-		Error e = _fix_imported_scene_paths(node->get_child(i), root, save_path);
-		ERR_FAIL_COND_V(e != OK, e);
-	};
-
-	return OK;
-};
-
 
 bool EditorNode::_find_and_save_resource(RES res,Map<RES,bool>& processed,int32_t flags) {
 
@@ -1252,7 +1170,6 @@ void EditorNode::_dialog_action(String p_file) {
 		} break;
 		case FILE_RUN_SCRIPT: {
 
-			print_line("RUN: "+p_file);
 			Ref<Script> scr = ResourceLoader::load(p_file,"Script",true);
 			if (scr.is_null()) {
 				add_io_error("Script Failed to Load:\n"+p_file);
@@ -1396,7 +1313,6 @@ void EditorNode::_dialog_action(String p_file) {
 			ret = unzGoToFirstFile(pkg);
 
 			EditorProgress p("ltask",TTR("Loading Export Templates"),fc);
-			print_line("BEGIN IMPORT");
 
 			fc=0;
 
@@ -1426,7 +1342,6 @@ void EditorNode::_dialog_action(String p_file) {
 				file=file.get_file();
 
 				p.step(TTR("Importing:")+" "+file,fc);
-				print_line("IMPORT "+file);
 
 				FileAccess *f = FileAccess::open(EditorSettings::get_singleton()->get_settings_path()+"/templates/"+file,FileAccess::WRITE);
 
@@ -1937,7 +1852,7 @@ void EditorNode::_run(bool p_current,const String& p_custom) {
 			current_option=-1;
 			//accept->get_cancel()->hide();
 			accept->get_ok()->set_text(TTR("I see.."));
-			accept->set_text("No main scene has ever been defined.\nSelect one from \"Project Settings\" under the 'application' category.");
+			accept->set_text(TTR("No main scene has ever been defined.\nSelect one from \"Project Settings\" under the 'application' category."));
 			accept->popup_centered_minsize();
 			return;
 		}
@@ -2214,7 +2129,7 @@ void EditorNode::_menu_option_confirm(int p_option,bool p_confirmed) {
 				String existing;
 				if (extensions.size()) {
 					String root_name(get_edited_scene()->get_name());
-					existing=root_name+"."+extensions.front()->get().to_lower();
+					existing=root_name+".tscn";//+extensions.front()->get().to_lower();
 				}
 				file->set_current_path(existing);
 
@@ -2414,6 +2329,7 @@ void EditorNode::_menu_option_confirm(int p_option,bool p_confirmed) {
 
 
 			_menu_option_confirm(RUN_STOP,true);
+			exiting=true;
 			get_tree()->quit();
 
 		} break;
@@ -2747,6 +2663,7 @@ void EditorNode::_menu_option_confirm(int p_option,bool p_confirmed) {
 			}
 
 			_menu_option_confirm(RUN_STOP,true);
+			exiting=true;
 			get_tree()->quit();
 			String exec = OS::get_singleton()->get_executable_path();
 
@@ -3035,6 +2952,9 @@ void EditorNode::remove_editor_plugin(EditorPlugin *p_editor) {
 		//singleton->main_editor_tabs->add_tab(p_editor->get_name());
 		singleton->editor_table.erase(p_editor);
 	}
+	p_editor->make_visible(false);
+	p_editor->clear();
+	singleton->editor_plugins_over->get_plugins_list().erase(p_editor);
 	singleton->remove_child(p_editor);
 	singleton->editor_data.remove_editor_plugin( p_editor );
 
@@ -3087,6 +3007,7 @@ void EditorNode::set_addon_plugin_enabled(const String& p_addon,bool p_enabled) 
 	if (!p_enabled) {
 
 		EditorPlugin *addon = plugin_addons[p_addon];
+		remove_editor_plugin(addon);
 		memdelete(addon); //bye
 		plugin_addons.erase(p_addon);
 		_update_addon_config();
@@ -3642,7 +3563,6 @@ Error EditorNode::load_scene(const String& p_scene, bool p_ignore_broken_deps,bo
 	load_errors->clear();
 	String lpath = Globals::get_singleton()->localize_path(p_scene);
 
-	print_line("LOCAL PATH: "+lpath+" from "+p_scene);
 	if (!lpath.begins_with("res://")) {
 
 		current_option=-1;
@@ -4289,7 +4209,6 @@ void EditorNode::_dock_select_input(const InputEvent& p_input) {
 				dock_slot[dock_popup_selected]->set_current_tab(0);
 			}
 
-			print_line("performing reparent");
 			dock_slot[nrect]->add_child(dock);
 			dock_popup_selected=nrect;
 			dock_slot[nrect]->set_current_tab(dock_slot[nrect]->get_tab_count()-1);
@@ -4702,9 +4621,9 @@ void EditorNode::_update_layouts_menu() {
 
 	editor_layouts->set_size(Vector2());
 	editor_layouts->add_shortcut(ED_SHORTCUT("layout/save",TTR("Save Layout")), SETTINGS_LAYOUT_SAVE);
-	editor_layouts->add_shortcut(ED_SHORTCUT("layout/load",TTR("Load Layout")), SETTINGS_LAYOUT_DELETE);
+	editor_layouts->add_shortcut(ED_SHORTCUT("layout/delete",TTR("Delete Layout")), SETTINGS_LAYOUT_DELETE);
 	editor_layouts->add_separator();
-	editor_layouts->add_shortcut(ED_SHORTCUT("property_editor/reset",TTR("Default")), SETTINGS_LAYOUT_DEFAULT);
+	editor_layouts->add_shortcut(ED_SHORTCUT("layout/default",TTR("Default")), SETTINGS_LAYOUT_DEFAULT);
 
 	Ref<ConfigFile> config;
 	config.instance();
@@ -5135,6 +5054,10 @@ void EditorNode::_dropped_files(const Vector<String>& p_files,int p_screen) {
 		EditorImportExport::get_singleton()->get_import_plugin(i)->import_from_drop(p_files,cur_path);
 	}
 }
+void EditorNode::_file_access_close_error_notify(const String& p_str) {
+
+	add_io_error("Unable to write to file '"+p_str+"', file in use, locked or lacking permissions.");
+}
 
 void EditorNode::_bind_methods() {
 
@@ -5230,7 +5153,6 @@ EditorNode::EditorNode() {
 	SceneState::set_disable_placeholders(true);
 	editor_initialize_certificates(); //for asset sharing
 
-
 	InputDefault *id = Input::get_singleton()->cast_to<InputDefault>();
 
 	if (id) {
@@ -5244,6 +5166,7 @@ EditorNode::EditorNode() {
 
 
 	singleton=this;
+	exiting=false;
 	last_checked_version=0;
 	changing_scene=false;
 	_initializing_addons=false;
@@ -5259,7 +5182,6 @@ EditorNode::EditorNode() {
 		EditorSettings::create();
 	{
 		int dpi_mode = EditorSettings::get_singleton()->get("global/hidpi_mode");
-		print_line("DPI MODE: "+itos(dpi_mode));
 		if (dpi_mode==0) {
 			editor_set_hidpi( OS::get_singleton()->get_screen_dpi(0) > 150 );
 		} else if (dpi_mode==2) {
@@ -5310,38 +5232,18 @@ EditorNode::EditorNode() {
 	ObjectTypeDB::set_type_enabled("CollisionShape",true);
 	ObjectTypeDB::set_type_enabled("CollisionShape2D",true);
 	ObjectTypeDB::set_type_enabled("CollisionPolygon2D",true);
-	//ObjectTypeDB::set_type_enabled("BodyVolumeConvexPolygon",true);
+
+	Control *theme_base = memnew( Control );
+	add_child(theme_base);
+	theme_base->set_area_as_parent_rect();
 
 	gui_base = memnew( Panel );
-	add_child(gui_base);
+	theme_base->add_child(gui_base);
 	gui_base->set_area_as_parent_rect();
 
-
-	theme = Ref<Theme>( memnew( Theme ) );
-	gui_base->set_theme( theme );
-	editor_register_icons(theme);
-	editor_register_fonts(theme);
-
-	//theme->set_icon("folder","EditorFileDialog",Theme::get_default()->get_icon("folder","EditorFileDialog"));
-	//theme->set_color("files_disabled","EditorFileDialog",Color(0,0,0,0.7));
-
-	String global_font = EditorSettings::get_singleton()->get("global/custom_font");
-	if (global_font!="") {
-		Ref<Font> fnt = ResourceLoader::load(global_font);
-		if (fnt.is_valid()) {
-			theme->set_default_theme_font(fnt);
-		}
-	}
-
-	Ref<StyleBoxTexture> focus_sbt=memnew( StyleBoxTexture );
-	focus_sbt->set_texture(theme->get_icon("EditorFocus","EditorIcons"));
-	for(int i=0;i<4;i++) {
-		focus_sbt->set_margin_size(Margin(i),16);
-		focus_sbt->set_default_margin(Margin(i),16);
-	}
-	focus_sbt->set_draw_center(false);
-	theme->set_stylebox("EditorFocus","EditorStyles",focus_sbt);
-
+	theme_base->set_theme( create_default_theme() );
+	theme = create_editor_theme();
+	gui_base->set_theme(theme);
 
 	resource_preview = memnew( EditorResourcePreview );
 	add_child(resource_preview);
@@ -5597,6 +5499,8 @@ EditorNode::EditorNode() {
 	prev_scene->set_pos(Point2(3,24));
 	prev_scene->hide();
 
+	ED_SHORTCUT("editor/fullscreen_mode",TTR("Fullscreen Mode"),KEY_MASK_SHIFT|KEY_F11);
+	ED_SHORTCUT("editor/distraction_free_mode",TTR("Distraction Free Mode"),KEY_MASK_CMD|KEY_MASK_SHIFT|KEY_F11);
 
 	Separator *vs=NULL;
 
@@ -5625,8 +5529,8 @@ EditorNode::EditorNode() {
 	p->add_submenu_item(TTR("Convert To.."),"Export");
 	pm_export->add_item(TTR("Translatable Strings.."),FILE_DUMP_STRINGS);
 	pm_export->add_separator();
-	pm_export->add_item(TTR("MeshLibrary.."),FILE_EXPORT_MESH_LIBRARY);
-	pm_export->add_item(TTR("TileSet.."),FILE_EXPORT_TILESET);
+	pm_export->add_shortcut(ED_SHORTCUT("editor/convert_to_MeshLibrary", TTR("MeshLibrary..")), FILE_EXPORT_MESH_LIBRARY);
+	pm_export->add_shortcut(ED_SHORTCUT("editor/convert_to_TileSet", TTR("TileSet..")), FILE_EXPORT_TILESET);
 	pm_export->connect("item_pressed",this,"_menu_option");
 
 	p->add_separator();
@@ -6271,7 +6175,7 @@ EditorNode::EditorNode() {
 	logo->set_texture(gui_base->get_icon("Logo","EditorIcons") );
 
 	warning = memnew( AcceptDialog );
-	add_child(warning);
+	gui_base->add_child(warning);
 
 
 
@@ -6378,8 +6282,12 @@ EditorNode::EditorNode() {
 	add_editor_plugin( memnew( CanvasItemEditorPlugin(this) ) );
 	add_editor_plugin( memnew( SpatialEditorPlugin(this) ) );
 	add_editor_plugin( memnew( ScriptEditorPlugin(this) ) );
-	//add_editor_plugin( memnew( AddonEditorPlugin(this) ) );
 
+	if (StreamPeerSSL::is_available()) {
+		add_editor_plugin( memnew( AssetLibraryEditorPlugin(this) ) );
+	} else {
+		WARN_PRINT("Asset Library not available, as it requires SSL to work.");
+	}
 	//more visually meaningful to have this later
 	raise_bottom_panel_item(AnimationPlayerEditor::singleton);
 
@@ -6526,12 +6434,12 @@ EditorNode::EditorNode() {
 	{
 		List<StringName> tl;
 		StringName ei = "EditorIcons";
-		gui_base->get_theme()->get_icon_list(ei,&tl);
+		theme_base->get_theme()->get_icon_list(ei,&tl);
 		for(List<StringName>::Element *E=tl.front();E;E=E->next()) {
 
 			if (!ObjectTypeDB::type_exists(E->get()))
 				continue;
-			icon_type_cache[E->get()]=gui_base->get_theme()->get_icon(E->get(),ei);
+			icon_type_cache[E->get()]=theme_base->get_theme()->get_icon(E->get(),ei);
 		}
 	}
 
@@ -6567,12 +6475,14 @@ EditorNode::EditorNode() {
 
 	_load_docks();
 
+	FileAccess::set_file_close_fail_notify_callback(_file_access_close_error_notify);
 
 
 }
 
 
 EditorNode::~EditorNode() {
+
 
 	memdelete( EditorHelp::get_doc_data() );
 	memdelete(editor_selection);
